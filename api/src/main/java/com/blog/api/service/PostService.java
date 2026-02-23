@@ -276,7 +276,7 @@ public class PostService {
                             .slug(post.getSlug())
                             .summary(post.getSummary())
                             .content(post.getContent())
-                            .cover(post.getCover())
+                            .cover(normalizeCoverPath(post.getCover()))
                             .authorId(post.getAuthorId())
                             .categoryId(post.getCategoryId())
                             .status(post.getStatus())
@@ -315,7 +315,7 @@ public class PostService {
                 .slug(post.getSlug())
                 .summary(post.getSummary())
                 .content(post.getContent())
-                .cover(post.getCover())
+                .cover(normalizeCoverPath(post.getCover()))
                 .authorId(post.getAuthorId())
                 .categoryId(post.getCategoryId())
                 .status(post.getStatus())
@@ -354,5 +354,21 @@ public class PostService {
         }
 
         return builder.build();
+    }
+
+    /**
+     * 规范化封面图片路径
+     * 如果路径不以 http 开头且不以 /uploads 开头，则添加 /uploads 前缀
+     */
+    private String normalizeCoverPath(String cover) {
+        if (cover == null || cover.isBlank()) {
+            return cover;
+        }
+        // 已经是完整 URL 或已包含 /uploads 前缀
+        if (cover.startsWith("http://") || cover.startsWith("https://") || cover.startsWith("/uploads")) {
+            return cover;
+        }
+        // 添加 /uploads 前缀
+        return "/uploads/" + cover;
     }
 }
