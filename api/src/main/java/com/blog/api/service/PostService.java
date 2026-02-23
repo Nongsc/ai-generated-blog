@@ -17,13 +17,19 @@ import com.blog.api.mapper.PostMapper;
 import com.blog.api.mapper.PostTagMapper;
 import com.blog.api.mapper.TagMapper;
 import com.blog.api.mapper.UserMapper;
+import com.blog.api.util.SlugUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -44,11 +50,13 @@ public class PostService {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 
-        // Handle slug
+        // Handle slug using SlugUtils
         String slug = request.getSlug();
         if (!StringUtils.hasText(slug)) {
-            slug = generateSlug(request.getTitle());
+            slug = SlugUtils.generateSlug(request.getTitle());
         }
+        
+        // Check slug uniqueness
         LambdaQueryWrapper<Post> slugQuery = new LambdaQueryWrapper<>();
         slugQuery.eq(Post::getSlug, slug);
         if (postMapper.selectCount(slugQuery) > 0) {
@@ -113,9 +121,8 @@ public class PostService {
 
         Page<Post> result = postMapper.selectPage(pageParam, query);
 
-        List<PostResponse> content = result.getRecords().stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+        // 批量转换，避免 N+1 查询
+        List<PostResponse> content = toResponseList(result.getRecords());
 
         return PageResponse.of(content, page, size, result.getTotal());
     }
@@ -136,9 +143,8 @@ public class PostService {
 
         Page<Post> result = postMapper.selectPage(pageParam, query);
 
-        List<PostResponse> content = result.getRecords().stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+        // 批量转换，避免 N+1 查询
+        List<PostResponse> content = toResponseList(result.getRecords());
 
         return PageResponse.of(content, page, size, result.getTotal());
     }
@@ -195,13 +201,11 @@ public class PostService {
         postMapper.deleteById(id);
     }
 
-    @Transactional
+    /**
+     * 原子更新浏览量（解决并发问题）
+     */
     public void incrementViewCount(Long id) {
-        Post post = postMapper.selectById(id);
-        if (post != null) {
-            post.setViewCount(post.getViewCount() + 1);
-            postMapper.updateById(post);
-        }
+        postMapper.incrementViewCount(id);
     }
 
     private void savePostTags(Long postId, List<Long> tagIds) {
@@ -215,6 +219,95 @@ public class PostService {
         }
     }
 
+    /**
+     * 批量转换文章列表，避免 N+1 查询
+     */
+    private List<PostResponse> toResponseList(List<Post> posts) {
+        if (posts.isEmpty()) {
+            return List.of();
+        }
+
+        // 收集所有分类 ID
+        Set<Long> categoryIds = posts.stream()
+                .map(Post::getCategoryId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // 收集所有文章 ID
+        List<Long> postIds = posts.stream()
+                .map(Post::getId)
+                .collect(Collectors.toList());
+
+        // 批量查询分类
+        Map<Long, PostMapper.CategoryInfo> categoryMap = Map.of();
+        if (!categoryIds.isEmpty()) {
+            categoryMap = postMapper.selectCategoriesByIds(new ArrayList<>(categoryIds))
+                    .stream()
+                    .collect(Collectors.toMap(PostMapper.CategoryInfo::getId, Function.identity()));
+        }
+
+        // 批量查询标签
+        Map<Long, List<PostResponse.TagInfo>> postTagsMap = Map.of();
+        if (!postIds.isEmpty()) {
+            postTagsMap = postMapper.selectTagsByPostIds(postIds)
+                    .stream()
+                    .collect(Collectors.groupingBy(
+                            PostMapper.TagWithPostId::getPostId,
+                            Collectors.mapping(
+                                    t -> PostResponse.TagInfo.builder()
+                                            .id(t.getId())
+                                            .name(t.getName())
+                                            .slug(t.getSlug())
+                                            .build(),
+                                    Collectors.toList()
+                            )
+                    ));
+        }
+
+        // 转换
+        final Map<Long, PostMapper.CategoryInfo> finalCategoryMap = categoryMap;
+        final Map<Long, List<PostResponse.TagInfo>> finalPostTagsMap = postTagsMap;
+
+        return posts.stream()
+                .map(post -> {
+                    PostResponse.PostResponseBuilder builder = PostResponse.builder()
+                            .id(post.getId())
+                            .title(post.getTitle())
+                            .slug(post.getSlug())
+                            .summary(post.getSummary())
+                            .content(post.getContent())
+                            .cover(post.getCover())
+                            .authorId(post.getAuthorId())
+                            .categoryId(post.getCategoryId())
+                            .status(post.getStatus())
+                            .viewCount(post.getViewCount())
+                            .publishedAt(post.getPublishedAt())
+                            .createdAt(post.getCreatedAt())
+                            .updatedAt(post.getUpdatedAt());
+
+                    // 设置分类信息
+                    if (post.getCategoryId() != null) {
+                        PostMapper.CategoryInfo category = finalCategoryMap.get(post.getCategoryId());
+                        if (category != null) {
+                            builder.categoryName(category.getName());
+                            builder.categorySlug(category.getSlug());
+                        }
+                    }
+
+                    // 设置标签信息
+                    List<PostResponse.TagInfo> tags = finalPostTagsMap.getOrDefault(post.getId(), List.of());
+                    if (!tags.isEmpty()) {
+                        builder.tags(tags);
+                    }
+
+                    return builder.build();
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 单个文章转换（用于详情查询）
+     */
     private PostResponse toResponse(Post post) {
         PostResponse.PostResponseBuilder builder = PostResponse.builder()
                 .id(post.getId())
@@ -255,17 +348,11 @@ public class PostService {
                         }
                         return null;
                     })
-                    .filter(t -> t != null)
+                    .filter(Objects::nonNull)
                     .collect(Collectors.toList());
             builder.tags(tags);
         }
 
         return builder.build();
-    }
-
-    private String generateSlug(String title) {
-        return title.toLowerCase()
-                .replaceAll("[^a-z0-9\\u4e00-\\u9fa5]+", "-")
-                .replaceAll("^-|-$", "");
     }
 }

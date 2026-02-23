@@ -3,6 +3,39 @@
 本文档遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 规范，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.0] - 2026-02-24
+
+### 优化
+
+#### API 后端
+- **性能优化**：修复 N+1 查询问题，文章列表批量查询分类和标签
+- **并发安全**：浏览量计数改用原子更新 SQL
+- **代码重构**：提取 `SlugUtils` 工具类，消除重复代码
+- **缓存优化**：`ConfigService` 添加 Redis 缓存（5 分钟 TTL）
+
+#### Admin 管理后台
+- **依赖清理**：移除 Prisma、mysql2、bcryptjs 等未使用的依赖（减少约 17.5MB）
+- **统一缓存**：创建 `CacheManager` 缓存管理器
+- **骨架屏**：添加 `Skeleton` 组件系列
+- **错误处理**：添加 `ErrorBoundary` 错误边界组件
+
+#### Blog 博客前台
+- **统一缓存**：创建 `CacheManager` 缓存管理器
+- **缓存策略**：站点配置、分类、标签、友链添加缓存（5 分钟 TTL）
+- **骨架屏**：添加 `PostCardSkeleton`、`PostDetailSkeleton` 等组件
+- **错误处理**：添加 `ErrorBoundary` 错误边界组件
+
+#### 部署
+- **Docker 优化**：更新 `docker-compose.yml`，添加资源限制
+- **Dockerfile 优化**：移除 Admin 中 Prisma 相关步骤
+- **文档整理**：`DEPLOY.md` 移动到 `docs/deploy.md`
+
+### 修复
+- `PostMapper` 接口改为静态类解决 MyBatis 映射问题
+- Admin 媒体上传 API 路径错误修复
+
+---
+
 ## [1.0.0] - 2026-02-24
 
 ### 新增
@@ -53,10 +86,6 @@
 - 归档页使用 API 数据
 - 首页标题使用站点配置
 - 社交图标显示问题（使用 react-icons）
-
-### 技术债务
-- 配置系统开发环境不缓存
-- API 后端需要重启才能看到 Java 代码修改
 
 ---
 

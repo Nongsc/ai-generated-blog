@@ -172,6 +172,7 @@ curl -X POST http://localhost:8080/api/auth/register \
 - [API 文档](./docs/api/README.md)
 - [Admin 文档](./docs/admin/README.md)
 - [Blog 文档](./docs/blog/README.md)
+- [Docker 部署指南](./docs/deploy.md)
 
 ## 🛠️ 技术栈详情
 

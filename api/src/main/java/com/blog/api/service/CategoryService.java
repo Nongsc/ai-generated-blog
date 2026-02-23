@@ -10,6 +10,7 @@ import com.blog.api.exception.BusinessException;
 import com.blog.api.exception.ErrorCode;
 import com.blog.api.mapper.CategoryMapper;
 import com.blog.api.mapper.PostMapper;
+import com.blog.api.util.SlugUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,7 +39,7 @@ public class CategoryService {
         // Check if slug exists
         String slug = request.getSlug();
         if (!StringUtils.hasText(slug)) {
-            slug = generateSlug(request.getName());
+            slug = SlugUtils.generateSlug(request.getName());
         }
         LambdaQueryWrapper<Category> slugQuery = new LambdaQueryWrapper<>();
         slugQuery.eq(Category::getSlug, slug);
@@ -164,9 +165,4 @@ public class CategoryService {
                 .build();
     }
 
-    private String generateSlug(String name) {
-        return name.toLowerCase()
-                .replaceAll("[^a-z0-9\\u4e00-\\u9fa5]+", "-")
-                .replaceAll("^-|-$", "");
-    }
 }

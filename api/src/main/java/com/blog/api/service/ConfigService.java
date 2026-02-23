@@ -12,9 +12,11 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +29,12 @@ public class ConfigService {
 
     private final SiteConfigMapper siteConfigMapper;
     private final ObjectMapper objectMapper;
+    private final StringRedisTemplate redisTemplate;
+
+    // Redis 缓存 key 前缀
+    private static final String CACHE_PREFIX = "config:";
+    // 缓存过期时间：5 分钟
+    private static final Duration CACHE_TTL = Duration.ofMinutes(5);
 
     // 配置 key 常量
     public static final String KEY_SITE_BASIC = "site_basic";
@@ -41,9 +49,23 @@ public class ConfigService {
 
     /**
      * 获取所有站点配置（聚合）
+     * 使用 Redis 缓存整个聚合配置
      */
     public SiteConfigResponse getAllConfigs() {
-        return SiteConfigResponse.builder()
+        String cacheKey = CACHE_PREFIX + "all";
+        
+        // 尝试从缓存获取
+        String cachedValue = redisTemplate.opsForValue().get(cacheKey);
+        if (cachedValue != null) {
+            try {
+                return objectMapper.readValue(cachedValue, SiteConfigResponse.class);
+            } catch (JsonProcessingException e) {
+                log.warn("Failed to parse cached site config: {}", e.getMessage());
+            }
+        }
+        
+        // 从数据库获取
+        SiteConfigResponse response = SiteConfigResponse.builder()
                 .basic(getConfig(KEY_SITE_BASIC, SiteBasicConfig.class))
                 .seo(getConfig(KEY_SITE_SEO, SiteSeoConfig.class))
                 .analytics(getConfig(KEY_SITE_ANALYTICS, SiteAnalyticsConfig.class))
@@ -52,10 +74,21 @@ public class ConfigService {
                 .socialLinks(getConfigList(KEY_SOCIAL_LINKS, new TypeReference<List<SocialLinkConfig>>() {}))
                 .skills(getConfigList(KEY_SKILLS, new TypeReference<List<SkillConfig>>() {}))
                 .build();
+        
+        // 存入缓存
+        try {
+            String jsonValue = objectMapper.writeValueAsString(response);
+            redisTemplate.opsForValue().set(cacheKey, jsonValue, CACHE_TTL);
+        } catch (JsonProcessingException e) {
+            log.warn("Failed to cache site config: {}", e.getMessage());
+        }
+        
+        return response;
     }
 
     /**
      * 保存所有站点配置（聚合）
+     * 清除所有相关缓存
      */
     @Transactional
     public void saveAllConfigs(SiteConfigResponse configs) {
@@ -80,6 +113,9 @@ public class ConfigService {
         if (configs.getSkills() != null) {
             saveConfig(KEY_SKILLS, configs.getSkills());
         }
+        
+        // 清除聚合配置缓存
+        clearAllConfigsCache();
     }
 
     // ==================== 单个配置操作 ====================
@@ -125,6 +161,10 @@ public class ConfigService {
             config.setUpdatedAt(LocalDateTime.now());
             siteConfigMapper.updateById(config);
         }
+        
+        // 清除相关缓存
+        clearConfigCache(request.getKey());
+        clearAllConfigsCache();
 
         return toResponse(config);
     }
@@ -132,12 +172,30 @@ public class ConfigService {
     // ==================== 泛型配置方法 ====================
 
     private <T> T getConfig(String key, Class<T> clazz) {
+        // 先查 Redis 缓存
+        String cacheKey = CACHE_PREFIX + key;
+        String cachedValue = redisTemplate.opsForValue().get(cacheKey);
+        
+        if (cachedValue != null) {
+            try {
+                return objectMapper.readValue(cachedValue, clazz);
+            } catch (JsonProcessingException e) {
+                log.warn("Failed to parse cached config for key: {}", key);
+            }
+        }
+        
+        // 查数据库
         try {
             SiteConfig config = getConfigEntity(key);
             if (config == null || config.getConfigValue() == null) {
                 return clazz.getDeclaredConstructor().newInstance();
             }
-            return objectMapper.readValue(config.getConfigValue(), clazz);
+            T result = objectMapper.readValue(config.getConfigValue(), clazz);
+            
+            // 存入缓存
+            redisTemplate.opsForValue().set(cacheKey, config.getConfigValue(), CACHE_TTL);
+            
+            return result;
         } catch (Exception e) {
             log.warn("Failed to parse config for key: {}, error: {}", key, e.getMessage());
             try {
@@ -149,12 +207,30 @@ public class ConfigService {
     }
 
     private <T> List<T> getConfigList(String key, TypeReference<List<T>> typeRef) {
+        // 先查 Redis 缓存
+        String cacheKey = CACHE_PREFIX + key;
+        String cachedValue = redisTemplate.opsForValue().get(cacheKey);
+        
+        if (cachedValue != null) {
+            try {
+                return objectMapper.readValue(cachedValue, typeRef);
+            } catch (JsonProcessingException e) {
+                log.warn("Failed to parse cached config list for key: {}", key);
+            }
+        }
+        
+        // 查数据库
         try {
             SiteConfig config = getConfigEntity(key);
             if (config == null || config.getConfigValue() == null) {
                 return new ArrayList<>();
             }
-            return objectMapper.readValue(config.getConfigValue(), typeRef);
+            List<T> result = objectMapper.readValue(config.getConfigValue(), typeRef);
+            
+            // 存入缓存
+            redisTemplate.opsForValue().set(cacheKey, config.getConfigValue(), CACHE_TTL);
+            
+            return result;
         } catch (Exception e) {
             log.warn("Failed to parse config list for key: {}, error: {}", key, e.getMessage());
             return new ArrayList<>();
@@ -181,6 +257,10 @@ public class ConfigService {
                 config.setUpdatedAt(LocalDateTime.now());
                 siteConfigMapper.updateById(config);
             }
+            
+            // 清除该配置的缓存
+            clearConfigCache(key);
+            
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize config for key: {}", key, e);
             throw new RuntimeException("Failed to save config: " + key);
@@ -191,6 +271,22 @@ public class ConfigService {
         LambdaQueryWrapper<SiteConfig> query = new LambdaQueryWrapper<>();
         query.eq(SiteConfig::getConfigKey, key);
         return siteConfigMapper.selectOne(query);
+    }
+
+    /**
+     * 清除单个配置的缓存
+     */
+    private void clearConfigCache(String key) {
+        String cacheKey = CACHE_PREFIX + key;
+        redisTemplate.delete(cacheKey);
+    }
+
+    /**
+     * 清除聚合配置的缓存
+     */
+    private void clearAllConfigsCache() {
+        String cacheKey = CACHE_PREFIX + "all";
+        redisTemplate.delete(cacheKey);
     }
 
     private ConfigResponse toResponse(SiteConfig config) {

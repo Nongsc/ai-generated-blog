@@ -9,6 +9,7 @@ import com.blog.api.entity.Tag;
 import com.blog.api.exception.BusinessException;
 import com.blog.api.exception.ErrorCode;
 import com.blog.api.mapper.TagMapper;
+import com.blog.api.util.SlugUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,7 +37,7 @@ public class TagService {
         // Handle slug
         String slug = request.getSlug();
         if (!StringUtils.hasText(slug)) {
-            slug = generateSlug(request.getName());
+            slug = SlugUtils.generateSlug(request.getName());
         }
         LambdaQueryWrapper<Tag> slugQuery = new LambdaQueryWrapper<>();
         slugQuery.eq(Tag::getSlug, slug);
@@ -145,9 +146,4 @@ public class TagService {
                 .build();
     }
 
-    private String generateSlug(String name) {
-        return name.toLowerCase()
-                .replaceAll("[^a-z0-9\\u4e00-\\u9fa5]+", "-")
-                .replaceAll("^-|-$", "");
-    }
 }

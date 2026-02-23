@@ -1,0 +1,12 @@
+target/
+!target/*.jar
+*.log
+*.tmp
+.git
+.gitignore
+.idea
+*.iml
+.env*
+!.env.example
+uploads/*
+!uploads/.gitkeep
