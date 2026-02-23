@@ -1,0 +1,93 @@
+/* Code highlighting styles */
+.hljs {
+  color: #4a5568;
+  background: transparent;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #718096;
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-link {
+  color: #d946ef;
+}
+
+.hljs-string,
+.hljs-title,
+.hljs-name,
+.hljs-type,
+.hljs-attribute,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition,
+.hljs-variable,
+.hljs-template-tag,
+.hljs-template-variable {
+  color: #10b981;
+}
+
+.hljs-function,
+.hljs-built_in,
+.hljs-number {
+  color: #f59e0b;
+}
+
+.hljs-deletion {
+  color: #ef4444;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: bold;
+}
+
+/* Dark mode */
+.dark .hljs {
+  color: #a1a1aa;
+}
+
+.dark .hljs-comment,
+.dark .hljs-quote {
+  color: #71717a;
+}
+
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-literal,
+.dark .hljs-section,
+.dark .hljs-link {
+  color: #f0abfc;
+}
+
+.dark .hljs-string,
+.dark .hljs-title,
+.dark .hljs-name,
+.dark .hljs-type,
+.dark .hljs-attribute,
+.dark .hljs-symbol,
+.dark .hljs-bullet,
+.dark .hljs-addition,
+.dark .hljs-variable,
+.dark .hljs-template-tag,
+.dark .hljs-template-variable {
+  color: #6ee7b7;
+}
+
+.dark .hljs-function,
+.dark .hljs-built_in,
+.dark .hljs-number {
+  color: #fcd34d;
+}
+
+.dark .hljs-deletion {
+  color: #fca5a5;
+}
