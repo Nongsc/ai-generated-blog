@@ -10,10 +10,11 @@ export async function GET() {
       data: stats,
     });
   } catch (error: any) {
-    console.error('Get dashboard stats error:', error);
+    // 认证错误返回 401，让前端可以正确处理
+    const status = error.message?.includes('403') || error.message?.includes('401') ? 401 : 500;
     return NextResponse.json(
       { success: false, error: error.message || '获取统计数据失败' },
-      { status: 500 }
+      { status }
     );
   }
 }

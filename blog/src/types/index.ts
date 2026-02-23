@@ -1,12 +1,14 @@
 // 文章元数据
 export interface PostMeta {
-  id: string;
+  id: number | string;
   title: string;
   date: string;
   categories: string[];
   tags: string[];
-  cover?: string;
+  cover?: string | null;
   excerpt: string;
+  slug?: string;
+  viewCount?: number;
 }
 
 // 文章内容

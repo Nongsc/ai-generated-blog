@@ -93,7 +93,7 @@ interface SiteConfigResponse {
 const defaultConfig: SiteConfigResponse = {
   basic: { title: '', description: '', logo: '', favicon: '', siteUrl: '', backgroundType: 'none', backgroundUrl: '', overlayOpacity: 0.5 },
   seo: { keywords: [], ogImage: '', twitterCard: '', twitterSite: '' },
-  analytics: { googleAnalyticsId: '', baiduAnalyticsId: '' },
+  analytics: { googleAnalyticsId: '', baiduTongjiId: '' },
   footer: { copyright: '', icpNumber: '', icpUrl: '', policeNumber: '', policeUrl: '' },
   author: { name: '', avatar: '', bio: '', location: '', email: '' },
   socialLinks: [],

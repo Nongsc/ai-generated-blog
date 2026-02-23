@@ -36,11 +36,14 @@ async function getAuthToken(): Promise<string | null> {
 // 设置 Token
 export async function setAuthToken(token: string): Promise<void> {
   const cookieStore = await cookies();
+  // 在开发环境或非 HTTPS 环境下不使用 secure
+  const useSecure = process.env.NODE_ENV === 'production' && process.env.USE_HTTPS === 'true';
   cookieStore.set('auth_token', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: useSecure,
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 7, // 7 days
+    path: '/',
   });
 }
 
@@ -73,9 +76,30 @@ async function request<T>(endpoint: string, config: RequestConfig = {}): Promise
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  const result: ApiResponse<T> = await response.json();
+  // 检查响应状态
+  if (!response.ok) {
+    let errorMessage = `HTTP ${response.status}`;
+    try {
+      const text = await response.text();
+      if (text) {
+        const errorData = JSON.parse(text);
+        errorMessage = errorData.message || errorMessage;
+      }
+    } catch {
+      // 忽略 JSON 解析错误
+    }
+    throw new Error(errorMessage);
+  }
 
-  if (!response.ok || result.code !== 200) {
+  // 解析响应
+  const text = await response.text();
+  if (!text) {
+    throw new Error('Empty response from server');
+  }
+
+  const result: ApiResponse<T> = JSON.parse(text);
+
+  if (result.code !== 200) {
     throw new Error(result.message || 'API request failed');
   }
 

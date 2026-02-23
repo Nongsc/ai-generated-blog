@@ -39,12 +39,16 @@ export default function DashboardPage() {
     const fetchStats = async () => {
       try {
         const res = await fetch('/api/dashboard/stats');
+        // 如果返回 401/403，说明未认证，静默处理
+        if (res.status === 401 || res.status === 403) {
+          return;
+        }
         const data = await res.json();
         if (data.success) {
           setStats(data.data);
         }
       } catch (error) {
-        console.error('Failed to fetch dashboard stats:', error);
+        // 静默处理网络错误
       } finally {
         setLoading(false);
       }
