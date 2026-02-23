@@ -16,6 +16,9 @@ FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 
+# 安装 curl（用于健康检查）
+RUN apk add --no-cache curl
+
 # 创建非 root 用户
 RUN addgroup -S spring && adduser -S spring -G spring
 

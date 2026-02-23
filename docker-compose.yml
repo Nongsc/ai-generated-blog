@@ -1,5 +1,21 @@
+# ===========================================
+# Sakura Blog - Docker Compose Configuration
+# ===========================================
+# Usage:
+#   1. Copy .env.docker.example to .env
+#   2. Run: docker compose up -d --build
+#   3. Access:
+#      - Blog: http://localhost:3001
+#      - Admin: http://localhost:3000
+#      - API: http://localhost:8080
+#
+# Default credentials: admin / admin123
+# ===========================================
+
 services:
+  # ==========================================
   # MySQL 数据库
+  # ==========================================
   mysql:
     image: mysql:8.0
     container_name: sakura-mysql
@@ -9,45 +25,70 @@ services:
       MYSQL_DATABASE: blog_db
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+      # 跳过时区信息加载，加快启动速度
+      MYSQL_INITDB_SKIP_TZINFO: 1
     ports:
-      - "3306:3306"
+      - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./api/src/main/resources/db:/docker-entrypoint-initdb.d:ro
     networks:
-      - sakura-network
+      sakura-network:
+        aliases:
+          - mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      # 检查数据库是否可连接且表已创建
+      test: >
+        mysql -uroot -p$${MYSQL_ROOT_PASSWORD} -e "SELECT 1 FROM user LIMIT 1" blog_db
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ==========================================
   # Redis 缓存
+  # ==========================================
   redis:
     image: redis:7-alpine
     container_name: sakura-redis
     restart: unless-stopped
+    command: redis-server --appendonly yes
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     networks:
-      - sakura-network
+      sakura-network:
+        aliases:
+          - redis
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ==========================================
   # API 后端服务
+  # ==========================================
   api:
     build:
       context: ./api
       dockerfile: Dockerfile
+    image: sakura-api:latest
     container_name: sakura-api
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${API_PORT:-8080}:8080"
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/blog_db?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&ssl=false
@@ -65,22 +106,37 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      # 检查 API 是否正常响应
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/blog/config/site"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     deploy:
       resources:
         limits:
           memory: 512M
         reservations:
           memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
 
+  # ==========================================
   # Admin 管理后台
+  # ==========================================
   admin:
     build:
       context: ./admin
       dockerfile: Dockerfile
+    image: sakura-admin:latest
     container_name: sakura-admin
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${ADMIN_PORT:-3000}:3000"
     environment:
       NODE_ENV: production
       SESSION_SECRET: ${SESSION_SECRET:-sakura-blog-admin-secret-key-2025}
@@ -89,23 +145,32 @@ services:
     networks:
       - sakura-network
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     deploy:
       resources:
         limits:
           memory: 256M
         reservations:
           memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ==========================================
   # Blog 博客前台
+  # ==========================================
   blog:
     build:
       context: ./blog
       dockerfile: Dockerfile
+    image: sakura-blog:latest
     container_name: sakura-blog
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "${BLOG_PORT:-3001}:3001"
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
@@ -113,18 +178,33 @@ services:
     networks:
       - sakura-network
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     deploy:
       resources:
         limits:
           memory: 256M
         reservations:
           memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+# ==========================================
+# 网络配置
+# ==========================================
 networks:
   sakura-network:
     driver: bridge
+    name: sakura-network
 
+# ==========================================
+# 数据卷配置
+# ==========================================
 volumes:
   mysql_data:
+    name: sakura-mysql-data
   redis_data:
+    name: sakura-redis-data
